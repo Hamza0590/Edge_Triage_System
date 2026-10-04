@@ -1,0 +1,33 @@
+paths:
+  project_root: ../..
+preprocessing:
+  normalization: train_standardize
+models:
+  checkpoint_index: artifacts/models/family_20260924T204507_5a8771c620a0.json
+  tier_portfolio: [tiny, medium]
+tier_selection:
+  policy: fixed
+  fixed_tier: tiny
+admission:
+  policy: sequential
+  execution_mode: sequential
+  fixed_concurrency: 1
+  max_concurrency: 1
+uncertainty:
+  policy: none
+escalation:
+  policy: none
+threshold:
+  policy: common
+fate:
+  policy: classification_only
+pipeline:
+  model_adapter: cnn
+  partition: validation
+  admission_retry_s: 0.01
+  admission_timeout_s: 1
+  record_batch_size: 8
+experiment:
+  name: smoke_tiny_medium
+  purpose: NON_SCIENTIFIC_SMOKE_TEST
+  provenance_ids: [engineering-foundation, adaptive-model-selection, posthoc-pipeline, peak-memory-scheduling]

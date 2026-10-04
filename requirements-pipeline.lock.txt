@@ -1,0 +1,4 @@
+# Module 03 checkpoint dependencies; Windows/Python 3.13.
+# Follow the CUDA-wheel installation instruction in requirements-data.lock.txt first.
+-r requirements-data.lock.txt
+pyarrow==23.0.1

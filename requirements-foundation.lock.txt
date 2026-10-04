@@ -1,0 +1,25 @@
+# Verified Windows/Python 3.13 environment snapshot, 2026-09-24.
+# Recreate with: python -m pip install -r requirements-foundation.lock.txt
+# Then: python -m pip install -e . --no-deps
+annotated-types==0.8.0
+colorama==0.4.6
+iniconfig==2.3.0
+librt==0.15.0
+mypy==1.20.2
+mypy_extensions==1.1.0
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.6.0
+psutil==7.2.2
+pydantic==2.13.5
+pydantic_core==2.46.5
+Pygments==2.21.0
+pytest==8.4.2
+PyYAML==6.0.3
+ruff==0.16.8
+setuptools==83.0.0
+types-psutil==7.2.2.20260906
+types-PyYAML==6.0.12.20260906
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+wheel==0.47.0

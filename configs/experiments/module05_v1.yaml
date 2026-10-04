@@ -1,0 +1,36 @@
+paths:
+  project_root: ../..
+preprocessing:
+  normalization: train_standardize
+  artifact: artifacts/data/preprocessing_v1_c3436bda1c7877ab.json
+split:
+  manifest: artifacts/data/split_seed20260924_v1.csv
+models:
+  checkpoint_index: artifacts/models/family_20260924T204507_5a8771c620a0.json
+training:
+  device: cuda
+  cpu_threads: 1
+loader:
+  batch_size: 64
+  pin_memory: false
+calibration:
+  bins: 15
+evaluation:
+  partition: validation
+  bootstrap_repeats: 1000
+  temperature_min: 0.01
+  temperature_max: 100
+  gate_cost_ratio: 1.25
+  gate_ap_improvement: 0.0005
+profiling:
+  batch_sizes: [1, 2, 4, 8]
+  warmup: 50
+  repeats: 300
+  rounds: 2
+  cpu_threads: 1
+  overhead_candidates: 100
+  stability_ratio: 2
+experiment:
+  name: module05_v1
+  purpose: VALIDATION_CALIBRATION_AND_HARDWARE_PROFILING
+  provenance_ids: [engineering-foundation, meercrab, temperature-scaling, peak-memory-scheduling]

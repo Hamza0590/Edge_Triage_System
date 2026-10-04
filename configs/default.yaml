@@ -1,0 +1,35 @@
+# Root resolves relative to this file; all other paths resolve from that root.
+paths:
+  project_root: ..
+dataset:
+  images: MeerLICHT_images.npy
+  labels: MeerLICHT_labels.csv
+split:
+  seed: 20260924
+  train_fraction: 0.5
+  validation_fraction: 0.2
+  test_fraction: 0.3
+preprocessing:
+  profile: nrd_center_crop
+  crop_size: 30
+models:
+  tier_portfolio: [tiny, medium, large]
+tier_selection:
+  policy: resource_queue_aware
+admission:
+  policy: memory_contention_aware
+  execution_mode: dynamic_concurrency
+uncertainty:
+  policy: selective_mc_dropout
+escalation:
+  policy: cascade
+threshold:
+  policy: per_tier
+fate:
+  policy: recall_constrained
+  target_survival_recall: 0.95
+experiment:
+  name: foundation
+  purpose: Module 01 infrastructure validation
+  seed: 20260924
+  provenance_ids: [engineering-foundation]

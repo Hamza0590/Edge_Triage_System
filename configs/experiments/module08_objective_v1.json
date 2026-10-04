@@ -1,0 +1,20 @@
+{
+  "version": "module08_validation_objective_v1",
+  "partition": "validation",
+  "seed": 20260924,
+  "passes": [5, 10, 20],
+  "ambiguous_fraction": 0.2,
+  "ambiguous_objective": "Symmetric interval around 0.5 containing the closest 20 percent of deterministic calibrated probabilities; inclusive ties",
+  "std_quantile": 0.8,
+  "std_objective": "Escalate at or above the 80th percentile of MC population standard deviation among ambiguous validation rows, or on mean/deterministic class disagreement",
+  "probability_mode": "calibrated",
+  "gate_min_error_auroc": 0.55,
+  "gate_min_confidence_auroc_gain": 0.02,
+  "gate_max_escalation_rate": 0.2,
+  "gate_max_additional_passes_per_candidate": 4.0,
+  "gate_max_uq_to_deterministic_cost_ratio": 2.0,
+  "gate_min_recall_at_frozen_tier_thresholds": 0.95,
+  "selection": "Among passing pass budgets, minimize measured mean selective UQ cost; tie-break fewer passes. If none pass, propose NoUncertaintyPolicy and no escalation; retain 5-pass selective cascade only as a negative ablation.",
+  "score_semantics": "Final tier deterministic calibrated probability; MC summaries route only. Never average tiers.",
+  "limitations": "Fit-set diagnostics, reused validation data, one family seed; no statistical generalization claim. Cost thresholds are engineering budgets declared before MC sampling. Frozen deterministic temperatures applied to MC samples are not claimed to recalibrate the MC predictive mean."
+}

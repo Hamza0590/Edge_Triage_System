@@ -1,0 +1,21 @@
+paths:
+  project_root: ../..
+preprocessing:
+  profile: nrd_center_crop
+  normalization: train_standardize
+  crop_size: 30
+  selected_channels: [new, reference, difference]
+  horizontal_flip: true
+  vertical_flip: true
+split:
+  seed: 20260924
+loader:
+  batch_size: 64
+  workers: 0
+  pin_memory: false
+  prefetch_factor: 2
+  include_original_bytes: true
+experiment:
+  name: dataset-preparation
+  purpose: Module 02 frozen data pipeline
+  provenance_ids: [engineering-foundation, meerlicht-release, meercrab]

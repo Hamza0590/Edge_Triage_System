@@ -1,0 +1,8 @@
+architecture_version: scalable_cnn_v1
+tier: tiny
+base_filters: 8
+dense_width: 64
+input_channels: 3
+crop_size: 30
+spatial_dropout: 0.20
+dense_dropout: 0.50

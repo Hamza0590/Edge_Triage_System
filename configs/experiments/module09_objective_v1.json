@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scope": "CPU FP32, one intra/inter-op thread, frozen validation system traces; no scientific test evaluation",
+  "fixed_levels": [1, 2, 4, 8],
+  "rounds": 3,
+  "workload": "frozen 120-occurrence immediate backlog",
+  "portfolio_routing": "round_robin_diagnostic; same decisions across fixed modes",
+  "gate_d": {
+    "minimum_throughput_gain_each_round": 1.10,
+    "maximum_e2e_p95_ratio_each_round": 1.25,
+    "maximum_mean_inference_degradation_each_round": 4.0,
+    "maximum_failures_or_losses": 0,
+    "memory_guard": "frozen whole-process RSS reservation per admitted job plus configured margin",
+    "selection": "lowest concurrency with maximum median throughput among settings passing every round; otherwise one",
+    "interpretation": "observed repeated software-in-the-loop workload only, not statistical significance or Jetson performance"
+  },
+  "component_comparison": {
+    "backends": ["threads", "processes"],
+    "levels": [1, 2, 4, 8],
+    "repeats": 3,
+    "warmup_per_worker": 5,
+    "input": "preprocessed validation images shared through read-only mmap; jobs pass integer offsets",
+    "micro_batch_sizes": [1, 2, 4, 8],
+    "micro_batch_max_wait_ms": 2.0,
+    "micro_batch_workloads": ["backlog", "moderate"],
+    "instrumentation": "component times reported separately from durable-event full pipeline; no direct superiority claim across scopes"
+  },
+  "safety": "precheck free memory before each level; skip this and higher levels on memory infeasibility or observed OOM; preserve failures",
+  "cuda": "not a selected serving condition: frozen CPU batch1 profiles are faster; GPU utilization/memory availability still recorded; no CUDA concurrency benefit claim",
+  "uncertainty": "none",
+  "escalation": "none"
+}

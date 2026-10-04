@@ -1,0 +1,12 @@
+{
+  "version": "module08_analysis_protocol_v1",
+  "declared_before_measurements": true,
+  "objective": "module08_objective_v1.json",
+  "gate_aggregation": "A budget passes only when each of three tier selective-std error AUROCs clears the declared chance and confidence-gain criteria, and all seven portfolios clear declared escalation/pass/cost/recall bounds. Undefined AUROC fails. Choose minimum equal-tier mean selective UQ cost among passing budgets.",
+  "error_definition": "Deterministic calibrated probability >=0.5 disagrees with validation label. Selective-std score is zero outside fitted ambiguity interval; also report full MC std AUROC and cheaper negative distance from0.5.",
+  "recall_definition": "Use the saved Module05 per-tier raw-logit recall threshold for the final visited tier; do not refit. Conservative flags are reported separately and do not artificially increase classification recall.",
+  "sampling": "CPU FP32 batch1,1 intra-op/1 inter-op thread,20 warmups; all643 validation rows per tier at5/10/20 passes, independently timed calls with shared diagnostic seed derivation; same seed gives nested masks, not independent repeats. Rotate pass-order by candidate; all-MC work enables the always ablation and is excluded from selective cost estimates when unvisited.",
+  "cost": "Adapter deterministic and sampler MC costs include state/RNG/transfer overhead; offline cascades sum visited components. Cheaper confidence baseline routes ambiguity directly with zero additional MC forwards. Runtime event/scheduler/monitor costs measured in separate sequential replay.",
+  "calibration": "Explicit calibrated mode for UQ experiment despite Module05 recommended raw for Medium/Large; retain raw and calibrated deterministic diagnostics and measure MC-mean calibration without refitting T. Proposed NoUQ fallback retains Module05 recommended mode.",
+  "isolation": "Only frozen validation IDs, no test inference/tuning, no checkpoint or calibration regeneration; all new outputs in unique immutable directories. Tests write only temporary artifacts."
+}

@@ -1,0 +1,8 @@
+name: Edge_Project
+channels:
+  - defaults
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      - -e .[dev,pipeline]

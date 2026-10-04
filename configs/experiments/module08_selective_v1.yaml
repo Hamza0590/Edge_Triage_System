@@ -1,0 +1,95 @@
+paths:
+  project_root: ../..
+preprocessing:
+  normalization: train_standardize
+  artifact: artifacts/data/preprocessing_v1_c3436bda1c7877ab.json
+split:
+  manifest: artifacts/data/split_seed20260924_v1.csv
+models:
+  checkpoint_index: artifacts/models/family_20260924T204507_5a8771c620a0.json
+  tier_portfolio:
+  - tiny
+  - medium
+  - large
+training:
+  device: cpu
+  cpu_threads: 1
+calibration:
+  artifact_index: artifacts/calibration/20260925T073859_3c77b7896ab5/index.json
+  probability_mode: calibrated
+tier_selection:
+  policy: resource_queue_aware
+admission:
+  policy: sequential
+  execution_mode: sequential
+  fixed_concurrency: 1
+  max_concurrency: 4
+scheduler:
+  profiles: artifacts/profiles/20260925T073859_3c77b7896ab5/model_profiles.json
+  profiles_sha256: 1f4ec864fe80da168ec9c400b3cc146eb15e46decc3cf9635c3a0ca4b21b16b8
+  hardware_id: 63998d2133ba053a
+  device: cpu
+  constraints:
+    target_survival_recall: 0.95
+    latency_slo_ms: null
+    queue_wait_slo_ms: 20
+    memory_margin_bytes: 268435456
+    cpu_low: 50
+    cpu_high: 90
+    gpu_low: 50
+    gpu_high: 90
+    queue_low: 1
+    queue_high: 6
+    per_tier_caps:
+      tiny: 4
+      medium: 2
+      large: 1
+    max_total_active: 4
+    contention_ratio: 2
+    min_latency_samples: 5
+    hysteresis_s: 0.5
+    cooldown_s: 1
+    max_snapshot_age_s: 0.5
+    max_gpu_age_s: 2.5
+    preserve_escalation_target: true
+uncertainty:
+  policy: selective_mc_dropout
+  passes: 5
+  seed: 20260924
+  artifact: D:\Uni\SEM 7\Edge\project\artifacts\uncertainty\20260925T205209_b5ff8ad7f32c\routing_5.json
+  artifact_sha256: 19f7d021ede74c676e30282b39e6682b3005899722f54ab918cdd2b2e5c54604
+escalation:
+  policy: cascade
+  max_escalations: 2
+threshold:
+  policy: common
+fate:
+  policy: classification_only
+pipeline:
+  mode: adaptive_sequential
+  model_adapter: cnn
+  partition: validation
+  record_batch_size: 32
+  admission_timeout_s: 5
+queue:
+  capacity: 8
+  overflow: block
+monitor:
+  enabled: true
+  interval_s: 0.1
+  gpu_refresh_s: 2
+  estimator_window_s: 2
+workload:
+  trace: artifacts/traces/burst_periodic_3a5af13ae9c87b09.json
+experiment:
+  name: module08_selective_negative_v1
+  purpose: NON_SCIENTIFIC_SMOKE_TEST
+  provenance_ids:
+  - engineering-foundation
+  - adaptive-model-selection
+  - posthoc-pipeline
+  - convergo
+  - peak-memory-scheduling
+  - mc-dropout
+  - temperature-scaling
+  - human-label-free-uq

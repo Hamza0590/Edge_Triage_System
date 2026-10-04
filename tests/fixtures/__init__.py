@@ -1,0 +1,1 @@
+"""Explicit non-scientific fixtures."""

@@ -1,0 +1,27 @@
+paths:
+  project_root: ../..
+preprocessing:
+  normalization: train_standardize
+split:
+  manifest: artifacts/data/split_seed20260924_v1.csv
+training:
+  seed: 20260924
+  epochs: 30
+  batch_size: 64
+  learning_rate: 0.001
+  optimizer: adamw
+  weight_decay: 0.0001
+  patience: 8
+  selection_metric: average_precision
+  precision: fp32
+  device: cuda
+  deterministic: true
+  cpu_threads: 4
+  debug_overfit: true
+loader:
+  workers: 0
+  pin_memory: true
+experiment:
+  name: cnn_family_v1
+  purpose: SUPERVISED_TRAINING_VALIDATION_ONLY
+  provenance_ids: [engineering-foundation, meercrab, human-label-free-uq]
