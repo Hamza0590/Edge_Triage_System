@@ -89,7 +89,13 @@ def create_executor(
         pending_capacity=config.queue.capacity,
         admission_timeout_s=config.pipeline.admission_timeout_s,
     )
-    if mode == "dynamic_concurrency":
+    admission_mode = config.admission.concurrent_policy
+    if admission_mode == "auto":
+        admission_mode = (
+            "memory_contention_aware" if mode == "dynamic_concurrency" else "fixed_memory"
+        )
+    if admission_mode == "memory_contention_aware":
+        context.constraints = context.constraints.model_copy(update={"max_total_active": capacity})
         return DynamicConcurrencyExecutor(
             capacity, MemoryContentionAwareAdmissionPolicy(context), snapshot, **kwargs
         )

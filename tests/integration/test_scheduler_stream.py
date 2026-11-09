@@ -39,7 +39,9 @@ def test_adaptive_sequential_all_portfolios_frozen_trace(tmp_path, monkeypatch, 
     raw["workload"]["trace"] = ROOT / "artifacts/traces/backlog_periodic_ffee5a44e7aa7e08.json"
     # Read the original hash-checked trace, then use a short prefix in this isolated test.
     original = streaming.load_trace
-    monkeypatch.setattr(streaming, "load_trace", lambda *args: original(*args)[:8])
+    monkeypatch.setattr(
+        streaming, "load_trace", lambda *args, **kwargs: original(*args, **kwargs)[:8]
+    )
     directory = streaming.run_adaptive_sequential(AppConfig.model_validate(raw))
     summary = json.loads((directory / "metrics/adaptive_sequential_summary.json").read_text())
     assert (summary["completed"], summary["failed"]) == (8, 0)
@@ -69,7 +71,9 @@ def test_real_inference_reservations_released_with_failure(tmp_path, monkeypatch
     # Exercise the initial single-job safe path, without pretending this measures contention.
     raw["scheduler"]["constraints"]["min_latency_samples"] = 100
     original_trace, original_assemble = streaming.load_trace, streaming.assemble
-    monkeypatch.setattr(streaming, "load_trace", lambda *args: original_trace(*args)[:3])
+    monkeypatch.setattr(
+        streaming, "load_trace", lambda *args, **kwargs: original_trace(*args, **kwargs)[:3]
+    )
     parts_used = []
 
     class FailOne:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+
+from pydantic import Field
 
 from edge_triage.contracts import (
     SHA256,
@@ -50,6 +52,31 @@ class ThresholdDecision(Contract):
     p_real_threshold: Probability
     artifact_id: str
     artifact_sha256: SHA256
+    max_p_real_for_discard: float | None = Field(default=None, ge=0, lt=0.5)
+    min_p_real_for_transmit: float = Field(default=0.5, ge=0.5, le=1)
+    max_uncertainty_for_discard: float = Field(default=0, ge=0, le=0.5)
+    checkpoint_id: str | None = None
+    trusted_tier: ModelTier | None = None
+    discard_supported: bool = False
+    probability_mode: Literal["calibrated", "uncalibrated"] | None = None
+    calibration_artifact_id: str | None = None
+
+
+class FateContext(Contract):
+    """Final runtime evidence, deliberately without ground-truth labels."""
+
+    candidate_id: str
+    prediction: PredictionResult | None = None
+    uncertainty: UncertaintyResult | None = None
+    conservative_fallback: bool = False
+    failed: bool = False
+
+
+@runtime_checkable
+class ContextFatePolicy(Protocol):
+    def decide_context(
+        self, context: FateContext, threshold: ThresholdDecision | None, original_bytes: int
+    ) -> TriageDecision: ...
 
 
 class CandidateSource(Protocol):

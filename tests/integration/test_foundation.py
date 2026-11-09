@@ -47,7 +47,8 @@ def test_hash_mismatch_and_missing_file_are_failures(config, tmp_path):
 
 def test_provenance_is_explicit_about_unverified_sources(config):
     sources = load_provenance(config.paths.provenance_file)
-    assert len(sources) == 12
+    assert len(sources) == 13
+    assert "engineering-experiments" in {source.id for source in sources}
     assert sources[0].adoption_level == "infrastructure"
     assert "engineering infrastructure" in sources[0].title
     assert {source.adoption_level for source in sources} == {

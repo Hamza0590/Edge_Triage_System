@@ -429,7 +429,7 @@ def test_all_seven_portfolios_real_data_smoke(path, tmp_path):
 def test_refuses_scientific_dummy_and_unsupported_backend(smoke_config):
     raw = smoke_config.model_dump()
     raw["experiment"]["purpose"] = "science"
-    with pytest.raises(ValueError, match="NON_SCIENTIFIC"):
+    with pytest.raises(ValueError, match="explicit smoke or validation-fate purpose"):
         assemble(type(smoke_config).model_validate(raw))
     raw = smoke_config.model_dump()
     raw["admission"]["execution_mode"] = "dynamic_concurrency"

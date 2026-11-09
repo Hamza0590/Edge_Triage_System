@@ -90,13 +90,15 @@ def persist_trace(config: AppConfig, spec: WorkloadConfig) -> Path:
     return path
 
 
-def load_trace(path: Path, split_sha256: str) -> list[TraceRecord]:
+def load_trace(
+    path: Path, split_sha256: str, *, partition: str = "validation"
+) -> list[TraceRecord]:
     if hash_file(path) != path.with_suffix(".sha256").read_text().strip():
         raise ValueError("trace checksum mismatch")
     value = json.loads(path.read_text())
     if (
         value["schema_version"] != 1
-        or value["partition"] != "validation"
+        or value["partition"] != partition
         or value["split_sha256"] != split_sha256
     ):
         raise ValueError("trace identity mismatch")

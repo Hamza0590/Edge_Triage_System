@@ -150,7 +150,7 @@ class TraceSource:
     def __init__(
         self, config: AppConfig, run_id: str, records: list[TraceRecord], stop: threading.Event
     ) -> None:
-        self.dataset = MeerlichtDataset(config, "validation", run_id=run_id)
+        self.dataset = MeerlichtDataset(config, config.pipeline.partition, run_id=run_id)
         self.positions = {row["index_no"]: i for i, row in enumerate(self.dataset.rows)}
         for row in records:
             if row.dataset_index not in self.positions:
@@ -163,6 +163,7 @@ class TraceSource:
         self.last_arrival: float | None = None
         self.arrivals = 0
         self.max_lateness_ms = 0.0
+        self.preprocessing_ms = 0.0
 
     def __iter__(self) -> Iterator[CandidateInput]:
         origin = time.monotonic()
@@ -170,7 +171,9 @@ class TraceSource:
             due = origin + row.relative_arrival_seconds
             if self.stop.wait(max(0, due - time.monotonic())):
                 return
+            preprocessing_started = time.perf_counter_ns()
             sample = self.dataset[self.positions[row.dataset_index]]
+            self.preprocessing_ms += (time.perf_counter_ns() - preprocessing_started) / 1e6
             now = time.monotonic()
             self.first_arrival = now if self.first_arrival is None else self.first_arrival
             self.last_arrival = now
@@ -193,6 +196,7 @@ class TraceSource:
         )
         return {
             "offered": self.arrivals,
+            "preprocessing_ms": self.preprocessing_ms,
             "realized_arrival_rate_per_s": (self.arrivals - 1) / span if span > 0 else None,
             "max_arrival_lateness_ms": self.max_lateness_ms,
             "planned_duration_s": self.records[-1].relative_arrival_seconds,
@@ -332,25 +336,70 @@ def run_adaptive_sequential(config: AppConfig) -> Path:
     return _run_stream(config)
 
 
-def run_concurrent(config: AppConfig) -> Path:
+def run_concurrent(config: AppConfig, *, warmup_forwards_per_tier: int = 0) -> Path:
+    if config.pipeline.partition == "test":
+        from edge_triage.experiments.promotion import verify_promotion
+
+        verify_promotion(config)  # Guard before model loading or dataset access.
     if (
         config.pipeline.mode != "concurrent"
-        or config.pipeline.partition != "validation"
+        or config.pipeline.partition not in {"validation", "test"}
         or not config.monitor.enabled
     ):
         raise ValueError("concurrent requires monitor and validation workload")
-    return _run_stream(config)
+    if isinstance(warmup_forwards_per_tier, bool) or not 0 <= warmup_forwards_per_tier <= 1000:
+        raise ValueError("warmup count must be between zero and 1000")
+    return _run_stream(config, warmup_forwards_per_tier=warmup_forwards_per_tier)
 
 
-def _run_stream(config: AppConfig) -> Path:
+def _run_stream(config: AppConfig, *, warmup_forwards_per_tier: int = 0) -> Path:
     if config.workload.trace is None:
         raise ValueError("persist and select an arrival trace before execution")
     config, _ = resolve_training_data(config)
     assert config.split.manifest and config.models.checkpoint_index and config.workload.trace
     torch.set_num_threads(config.training.cpu_threads)
-    records = load_trace(config.workload.trace, hash_file(config.split.manifest))
+    records = load_trace(
+        config.workload.trace, hash_file(config.split.manifest), partition=config.pipeline.partition
+    )
     with RunManager(config) as run:
         parts = assemble(config, run.logger)
+        warmup_started = time.perf_counter_ns()
+        warmup_mc_forwards = 0
+        if warmup_forwards_per_tier:
+            # Exercise the actual serving adapters; no labels or fitted-state changes.
+            warmup_item = CandidateInput(
+                Candidate(
+                    run_id=run.manifest.run_id,
+                    trace_id="experiment-warmup",
+                    candidate_id="experiment-warmup",
+                    dataset_index=0,
+                    arrival_monotonic_ns=time.monotonic_ns(),
+                ),
+                torch.zeros(
+                    len(config.preprocessing.selected_channels),
+                    config.preprocessing.crop_size,
+                    config.preprocessing.crop_size,
+                ),
+                0,
+                120000,
+            )
+            for tier, adapter in parts.models.items():
+                for _ in range(warmup_forwards_per_tier):
+                    adapter.predict(warmup_item, tier)
+                if config.uncertainty.policy != "none":
+                    from edge_triage.uncertainty.sampling import sample_probabilities
+
+                    # Force the sampling path once per tier, independently of whether
+                    # the zero tensor falls inside its fitted ambiguity interval.
+                    base_adapter = getattr(adapter, "base", adapter)
+                    sample_probabilities(
+                        getattr(base_adapter, "model"),
+                        warmup_item.image,
+                        config.uncertainty.passes,
+                        seed=config.uncertainty.seed,
+                    )
+                    warmup_mc_forwards += config.uncertainty.passes
+        warmup_ms = (time.perf_counter_ns() - warmup_started) / 1e6
         if config.uncertainty.artifact is not None:
             run.register_threshold(config.uncertainty.artifact)
         index = read_index(config.models.checkpoint_index)
@@ -359,9 +408,9 @@ def _run_stream(config: AppConfig) -> Path:
             run.register_checkpoint(
                 Path(entry["directory"]) / "checkpoint_manifest.json", entry["checkpoint_id"]
             )
-        threshold = run.directory / "artifacts/common_threshold.txt"
-        write_immutable(threshold, parts.thresholds.definition())  # type: ignore[attr-defined]
-        run.register_threshold(threshold)
+        from edge_triage.runtime.factory import persist_thresholds
+
+        persist_thresholds(run, parts.thresholds)
 
         def queue_event(name: str, item: CandidateInput) -> None:
             run.logger.bind(item.candidate.trace_id, item.candidate.candidate_id).emit(
@@ -402,7 +451,9 @@ def _run_stream(config: AppConfig) -> Path:
         stop = threading.Event()
         source = TraceSource(config, run.manifest.run_id, records, stop)
         writer = ParquetRecordWriter(
-            run.directory / "candidates.parquet", config.pipeline.record_batch_size
+            run.directory / "candidates.parquet",
+            config.pipeline.record_batch_size,
+            purpose=config.experiment.purpose,
         )
 
         def snapshot(queue_length: int) -> ResourceSnapshot:
@@ -442,7 +493,9 @@ def _run_stream(config: AppConfig) -> Path:
                     if time.monotonic() >= deadline:
                         raise RuntimeError("monitor startup timeout")
                     stop.wait(0.005)
+            stream_started = time.perf_counter_ns()
             completed, failed = consume_stream(pipeline, source, queue, counters, stop, engine)
+            stream_wall_ms = (time.perf_counter_ns() - stream_started) / 1e6
         finally:
             monitor.stop()
             if not writer.closed:  # Startup failed before consume_stream took ownership.
@@ -457,6 +510,15 @@ def _run_stream(config: AppConfig) -> Path:
         if completed + failed + stats["rejected"] + stats["dropped"] != len(records):
             raise RuntimeError("candidate accounting mismatch")
         summary = {
+            "warmup": {
+                "method": "zero_tensor_same_serving_adapters",
+                "forwards_per_tier": warmup_forwards_per_tier,
+                "total_forwards": warmup_forwards_per_tier * len(parts.models),
+                "additional_mc_forwards": warmup_mc_forwards,
+                "wall_ms": warmup_ms,
+                "excluded_from_stream": True,
+            },
+            "stream_wall_ms": stream_wall_ms,
             "completed": completed,
             "failed": failed,
             "executor": (
@@ -483,7 +545,7 @@ def _run_stream(config: AppConfig) -> Path:
             },
             "availability": snapshot(len(queue)).model_dump(mode="json"),
             "trace_sha256": hash_file(config.workload.trace),
-            "test_evaluated": False,
+            "test_evaluated": config.pipeline.partition == "test",
             "artifacts": {
                 name: hash_file(run.directory / name)
                 for name in ("resources.jsonl", "candidates.parquet")

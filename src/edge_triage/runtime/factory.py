@@ -59,6 +59,20 @@ from edge_triage.scheduling.policies import (
     RoundRobinTierPolicy,
 )
 from edge_triage.scheduling.profiles import scheduler_profiles
+from edge_triage.triage.artifacts import (
+    CommonThresholdPolicy as CommonFateThresholdPolicy,
+)
+from edge_triage.triage.artifacts import (
+    PerTierThresholdPolicy,
+    load_fate_artifact,
+)
+from edge_triage.triage.policies import (
+    BinaryDiscardTransmitPolicy,
+    CommonThresholdThreeWayPolicy,
+    LogicalByteAccounting,
+    PerTierRecallConstrainedPolicy,
+    TransmitAllPolicy,
+)
 from edge_triage.uncertainty.artifacts import load_uncertainty
 from edge_triage.uncertainty.policies import (
     AlwaysMCDropoutPolicy,
@@ -101,8 +115,12 @@ def _build(registry: dict[str, Callable[[AppConfig], T]], name: str, config: App
 
 
 def assemble(config: AppConfig, logger: EventLogger | None = None) -> PipelineComponents:
-    if config.experiment.purpose != SMOKE_PURPOSE:
-        raise ValueError("reference pipeline requires purpose NON_SCIENTIFIC_SMOKE_TEST")
+    if config.experiment.purpose not in {
+        SMOKE_PURPOSE,
+        "VALIDATION_FATE_STUDY",
+        "HELD_OUT_EXPERIMENT",
+    }:
+        raise ValueError("pipeline requires an explicit smoke or validation-fate purpose")
     models: dict[ModelTier, ModelAdapter] = {}
     if config.pipeline.model_adapter == "cnn":
         if config.models.checkpoint_index is None:
@@ -154,7 +172,11 @@ def assemble(config: AppConfig, logger: EventLogger | None = None) -> PipelineCo
             tier: _build(MODELS, config.pipeline.model_adapter, config)
             for tier in config.models.tier_portfolio
         }
-    adaptive = config.tier_selection.policy in {"resource_queue_aware", "round_robin"}
+    adaptive = config.tier_selection.policy in {
+        "resource_queue_aware",
+        "resource_only",
+        "round_robin",
+    }
     profiled = (
         adaptive
         or config.admission.policy in {"fixed", "memory_contention_aware"}
@@ -173,8 +195,10 @@ def assemble(config: AppConfig, logger: EventLogger | None = None) -> PipelineCo
     if adaptive:
         assert context is not None
         selector = (
-            ResourceQueueAwareTierPolicy(context)
-            if config.tier_selection.policy == "resource_queue_aware"
+            ResourceQueueAwareTierPolicy(
+                context, queue_aware=config.tier_selection.policy != "resource_only"
+            )
+            if config.tier_selection.policy in {"resource_queue_aware", "resource_only"}
             else RoundRobinTierPolicy(context)
         )
     else:
@@ -227,6 +251,39 @@ def assemble(config: AppConfig, logger: EventLogger | None = None) -> PipelineCo
         uncertainty = policy(models, uq_artifact, config.uncertainty.seed)
     else:
         uncertainty = _build(UNCERTAINTY, config.uncertainty.policy, config)
+    thresholds: ThresholdPolicy
+    fate_policy: FatePolicy
+    if config.fate.policy == "classification_only":
+        thresholds = _build(THRESHOLDS, config.threshold.policy, config)
+        fate_policy = _build(FATE, config.fate.policy, config)
+    else:
+        accounting = LogicalByteAccounting(
+            compression_fraction=config.fate.compression_fraction,
+            metadata_bytes=config.fate.metadata_bytes,
+        )
+        if config.fate.policy == "transmit_all" and config.threshold.artifact is None:
+            thresholds = CommonThresholdPolicy()
+        else:
+            if config.threshold.artifact is None or config.threshold.artifact_sha256 is None:
+                raise ValueError("fate policy requires a frozen threshold artifact and hash")
+            resolved, _ = resolve_training_data(config)
+            fate_artifact = load_fate_artifact(
+                config.threshold.artifact, config.threshold.artifact_sha256, resolved
+            )
+            thresholds = (
+                CommonFateThresholdPolicy(fate_artifact)
+                if config.threshold.policy == "common"
+                else PerTierThresholdPolicy(fate_artifact)
+            )
+            if config.fate.policy == "common_three_way" and config.threshold.policy != "common":
+                raise ValueError("common three-way fate requires common thresholds")
+        policy_type = {
+            "transmit_all": TransmitAllPolicy,
+            "binary": BinaryDiscardTransmitPolicy,
+            "common_three_way": CommonThresholdThreeWayPolicy,
+            "recall_constrained": PerTierRecallConstrainedPolicy,
+        }[config.fate.policy]
+        fate_policy = policy_type(accounting)
     return PipelineComponents(
         queue=FifoCandidateQueue(),
         selector=selector,
@@ -239,8 +296,8 @@ def assemble(config: AppConfig, logger: EventLogger | None = None) -> PipelineCo
         models=models,
         uncertainty=uncertainty,
         escalation=_build(ESCALATION, config.escalation.policy, config),
-        thresholds=_build(THRESHOLDS, config.threshold.policy, config),
-        fate=_build(FATE, config.fate.policy, config),
+        thresholds=thresholds,
+        fate=fate_policy,
     )
 
 
@@ -267,11 +324,7 @@ def run_smoke(config: AppConfig, limit: int = 20) -> Path:
                 run.register_checkpoint(
                     Path(entry["directory"]) / "checkpoint_manifest.json", entry["checkpoint_id"]
                 )
-        if not isinstance(components.thresholds, CommonThresholdPolicy):
-            raise ValueError("smoke threshold persistence requires CommonThresholdPolicy")
-        threshold_path = run.directory / "artifacts" / "common_threshold.txt"
-        write_immutable(threshold_path, components.thresholds.definition())
-        run.register_threshold(threshold_path)
+        persist_thresholds(run, components.thresholds)
         source = DatasetSource(config, run.manifest.run_id, limit)
         writer = ParquetRecordWriter(
             run.directory / "candidates.parquet", config.pipeline.record_batch_size
@@ -290,3 +343,14 @@ def run_smoke(config: AppConfig, limit: int = 20) -> Path:
             ),
         )
     return run.directory
+
+
+def persist_thresholds(run: RunManager, thresholds: ThresholdPolicy) -> None:
+    if isinstance(thresholds, PerTierThresholdPolicy):
+        path = run.directory / "artifacts" / "fate_threshold.json"
+    elif isinstance(thresholds, CommonThresholdPolicy):
+        path = run.directory / "artifacts" / "common_threshold.txt"
+    else:
+        raise ValueError("threshold policy lacks a frozen serializable definition")
+    write_immutable(path, thresholds.definition())
+    run.register_threshold(path)

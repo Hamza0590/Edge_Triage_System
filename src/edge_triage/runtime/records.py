@@ -14,7 +14,9 @@ from edge_triage.contracts import Contract, Count, NonNegative, Probability
 
 class CandidateRecord(Contract):
     schema_version: Literal[1] = 1
-    purpose: Literal["NON_SCIENTIFIC_SMOKE_TEST"] = "NON_SCIENTIFIC_SMOKE_TEST"
+    purpose: Literal[
+        "NON_SCIENTIFIC_SMOKE_TEST", "VALIDATION_FATE_STUDY", "HELD_OUT_EXPERIMENT"
+    ] = "NON_SCIENTIFIC_SMOKE_TEST"
     run_id: str
     trace_id: str
     candidate_id: str
@@ -54,6 +56,9 @@ class CandidateRecord(Contract):
     active_jobs: Count
     concurrency: Count
     fate: str | None
+    fate_reason_code: str | None = None
+    fate_ms: NonNegative = 0
+    compression_cpu_ms: NonNegative = 0  # Logical accounting only; no codec executes.
     threshold_artifact_id: str | None
     threshold_artifact_sha256: str | None
     input_bytes: Count
@@ -109,6 +114,8 @@ _INTEGERS = {
     "output_bytes",
 }
 _FLOATS = {
+    "fate_ms",
+    "compression_cpu_ms",
     "admission_ms",
     "executor_ms",
     "final_trusted_p_real",
@@ -138,12 +145,17 @@ ANALYTICAL_SCHEMA = pa.schema(
 class ParquetRecordWriter:
     """Run-owned writer; close flushes partial batches even on upstream failures."""
 
-    def __init__(self, path: Path, batch_size: int = 64) -> None:
+    def __init__(
+        self, path: Path, batch_size: int = 64, purpose: str = "NON_SCIENTIFIC_SMOKE_TEST"
+    ) -> None:
         if batch_size < 1:
             raise ValueError("batch size must be positive")
         path.parent.mkdir(parents=True, exist_ok=True)
         self._stream = path.open("xb")
-        self._writer = pq.ParquetWriter(self._stream, ANALYTICAL_SCHEMA)
+        self.schema = ANALYTICAL_SCHEMA.with_metadata(
+            {b"schema_version": b"1", b"purpose": purpose.encode()}
+        )
+        self._writer = pq.ParquetWriter(self._stream, self.schema)
         self._buffer: list[CandidateRecord] = []
         self.batch_size = batch_size
         self.closed = False
@@ -162,7 +174,7 @@ class ParquetRecordWriter:
             self._writer.write_table(
                 pa.Table.from_pylist(
                     [record.model_dump(mode="json") for record in self._buffer],
-                    schema=ANALYTICAL_SCHEMA,
+                    schema=self.schema,
                 )
             )
             self._buffer.clear()

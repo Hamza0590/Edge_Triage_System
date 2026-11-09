@@ -33,7 +33,9 @@ from edge_triage.runtime.interfaces import (
     CandidateInput,
     CandidateQueue,
     CandidateSource,
+    ContextFatePolicy,
     EscalationPolicy,
+    FateContext,
     FatePolicy,
     ImageUncertaintyPolicy,
     InferenceExecutor,
@@ -413,7 +415,19 @@ class Pipeline:
                     continue
                 threshold = self.parts.thresholds.resolve(tier)
                 self._event(candidate, "triage.threshold", "THRESHOLD_ARTIFACT", threshold)
-                fate = self.parts.fate.decide(prediction, threshold, item.original_bytes)
+                if isinstance(self.parts.fate, ContextFatePolicy):
+                    fate = self.parts.fate.decide_context(
+                        FateContext(
+                            candidate_id=candidate.candidate_id,
+                            prediction=prediction,
+                            uncertainty=uncertainty,
+                            conservative_fallback=conservative,
+                        ),
+                        threshold,
+                        item.original_bytes,
+                    )
+                else:
+                    fate = self.parts.fate.decide(prediction, threshold, item.original_bytes)
                 verify_identity(fate.candidate_id)
                 machine.transition(PipelineState.TRIAGED)
                 self._event(candidate, "triage.decided", fate.reason_code, fate)
@@ -426,6 +440,14 @@ class Pipeline:
                 reservation = None
             self._event(candidate, "error.candidate_failed", "CANDIDATE_FAILED", error=error)
             machine.transition(PipelineState.FAILED)
+            if isinstance(self.parts.fate, ContextFatePolicy):
+                conservative = True
+                fate = self.parts.fate.decide_context(
+                    FateContext(candidate_id=candidate.candidate_id, failed=True),
+                    None,
+                    item.original_bytes,
+                )
+                self._event(candidate, "triage.decided", fate.reason_code, fate)
         finally:
             if reservation and isinstance(self.parts.admission, TierAdmissionPolicy):
                 self.parts.admission.release(reservation, outcome="cancelled")
@@ -433,6 +455,7 @@ class Pipeline:
         first, last = (predictions[0], predictions[-1]) if predictions else (None, None)
         return CandidateRecord.model_validate(
             {
+                "purpose": self.config.experiment.purpose,
                 "run_id": candidate.run_id,
                 "trace_id": candidate.trace_id,
                 "candidate_id": candidate.candidate_id,
@@ -489,9 +512,11 @@ class Pipeline:
                 "active_jobs": active_jobs,
                 "concurrency": concurrency,
                 "fate": fate.action if fate else None,
+                "fate_reason_code": fate.reason_code if fate else None,
+                "fate_ms": fate.duration_ms if fate else 0,
                 "threshold_artifact_id": fate.threshold_artifact_id if fate else None,
                 "threshold_artifact_sha256": fate.threshold_artifact_sha256 if fate else None,
-                "input_bytes": item.original_bytes,
+                "input_bytes": fate.input_bytes if fate else item.original_bytes,
                 "output_bytes": fate.output_bytes if fate else 0,
                 "queue_ms": ((started or final) - entry.queue_ns) / 1e6,
                 "inference_ms": inference_ms,

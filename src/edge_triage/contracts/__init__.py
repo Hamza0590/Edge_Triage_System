@@ -296,7 +296,7 @@ class TriageDecision(Contract):
     action: Literal["discard", "compress", "transmit"]
     threshold_artifact_id: Identifier
     threshold_artifact_sha256: SHA256
-    p_real: Probability
+    p_real: Probability | None
     reason_code: Identifier
     input_bytes: Count
     output_bytes: Count

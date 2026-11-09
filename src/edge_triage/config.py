@@ -10,12 +10,13 @@ import hashlib
 import json
 import math
 from pathlib import Path
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 import yaml
 from pydantic import Field, model_validator
 
 from edge_triage.contracts import (
+    SHA256,
     Contract,
     Count,
     Identifier,
@@ -192,11 +193,14 @@ class QueueConfig(Contract):
 
 
 class TierSelectionConfig(Contract):
-    policy: Literal["fixed", "round_robin", "resource_queue_aware"] = "resource_queue_aware"
+    policy: Literal["fixed", "round_robin", "resource_queue_aware", "resource_only"] = (
+        "resource_queue_aware"
+    )
     fixed_tier: ModelTier = ModelTier.TINY
 
 
 class AdmissionConfig(Contract):
+    concurrent_policy: Literal["auto", "fixed_memory", "memory_contention_aware"] = "auto"
     policy: Literal["unbounded", "fixed", "sequential", "memory_contention_aware"] = (
         "memory_contention_aware"
     )
@@ -229,15 +233,18 @@ class EscalationConfig(Contract):
 class ThresholdConfig(Contract):
     policy: Literal["global", "common", "per_tier"] = "per_tier"
     artifact: Path | None = None
+    artifact_sha256: str | None = None
     fit_partition: Literal["validation"] = "validation"
 
 
 class FateConfig(Contract):
-    policy: Literal["transmit_all", "classification_only", "recall_constrained"] = (
-        "recall_constrained"
-    )
+    policy: Literal[
+        "transmit_all", "classification_only", "recall_constrained", "binary", "common_three_way"
+    ] = "recall_constrained"
     target_survival_recall: Probability = 0.95
     compression: Literal["logical_bytes"] = "logical_bytes"
+    compression_fraction: float = Field(default=0.25, gt=0, le=1)
+    metadata_bytes: Count = 0
 
 
 class WorkloadConfig(Contract):
@@ -263,6 +270,8 @@ class ExperimentConfig(Contract):
 
 
 class PipelineConfig(Contract):
+    promotion: Path | None = None
+    promotion_sha256: SHA256 | None = None
     mode: Literal["reference", "monitor_only", "adaptive_sequential", "concurrent"] = "reference"
     model_adapter: Literal["dummy", "cnn"] = "cnn"
     partition: Literal["train", "validation", "test"] = "validation"
@@ -305,8 +314,10 @@ class AppConfig(Contract):
         return self
 
     def canonical_json(self) -> str:
+        raw = self.model_dump(mode="json")
+        omit_legacy_defaults(raw)
         return json.dumps(
-            self.model_dump(mode="json"),
+            raw,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
@@ -323,6 +334,15 @@ class AppConfig(Contract):
 
 class UniqueKeyLoader(yaml.SafeLoader):
     """Prevent silently overwriting repeated YAML keys."""
+
+
+def omit_legacy_defaults(raw: dict[str, Any]) -> None:
+    """Keep historical config/threshold identities stable for unchanged behavior."""
+    if raw["admission"].get("concurrent_policy") == "auto":
+        raw["admission"].pop("concurrent_policy")
+    for key in ("promotion", "promotion_sha256"):
+        if raw["pipeline"].get(key) is None:
+            raw["pipeline"].pop(key, None)
 
 
 def _unique_mapping(loader: UniqueKeyLoader, node: yaml.MappingNode) -> dict[str, object]:

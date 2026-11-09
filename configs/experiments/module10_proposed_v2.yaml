@@ -1,0 +1,190 @@
+admission:
+  execution_mode: dynamic_concurrency
+  fixed_concurrency: 2
+  max_concurrency: 8
+  policy: memory_contention_aware
+calibration:
+  artifact_index: D:\Uni\SEM 7\Edge\project\artifacts\calibration\20260925T073859_3c77b7896ab5\index.json
+  bins: 15
+  fit_partition: validation
+  method: temperature_scaling
+  probability_mode: recommended
+  seed: 20260924
+dataset:
+  channel_order:
+  - new
+  - reference
+  - difference
+  images: D:\Uni\SEM 7\Edge\project\MeerLICHT_images.npy
+  images_md5: bbf55c1cecbdea127497d6cd346e3455
+  labels: D:\Uni\SEM 7\Edge\project\MeerLICHT_labels.csv
+  labels_md5: cacf76a6aadd97ed18ab24b58e121bc2
+escalation:
+  max_escalations: 2
+  policy: none
+evaluation:
+  bootstrap_repeats: 1000
+  gate_ap_improvement: 0.0005
+  gate_cost_ratio: 1.25
+  partition: validation
+  temperature_max: 100.0
+  temperature_min: 0.01
+experiment:
+  name: module10_proposed_all_dynamic
+  provenance_ids:
+  - engineering-foundation
+  - adaptive-model-selection
+  - posthoc-pipeline
+  - convergo
+  - peak-memory-scheduling
+  - mc-dropout
+  - temperature-scaling
+  - human-label-free-uq
+  - selective-classification
+  purpose: VALIDATION_FATE_STUDY
+  seed: 20260924
+fate:
+  compression: logical_bytes
+  compression_fraction: 0.25
+  metadata_bytes: 0
+  policy: recall_constrained
+  target_survival_recall: 0.95
+loader:
+  batch_size: 64
+  include_original_bytes: true
+  pin_memory: false
+  prefetch_factor: 2
+  workers: 0
+models:
+  checkpoint_index: D:\Uni\SEM 7\Edge\project\artifacts\models\family_20260924T204507_5a8771c620a0.json
+  tier_portfolio:
+  - tiny
+  - medium
+  - large
+monitor:
+  enabled: true
+  estimator_max_samples: 10000
+  estimator_window_s: 2.0
+  gpu_refresh_s: 2.0
+  history_limit: 256
+  interval_s: 0.1
+  overhead_warning_fraction: 0.1
+paths:
+  artifacts_dir: D:\Uni\SEM 7\Edge\project\artifacts
+  logs_dir: D:\Uni\SEM 7\Edge\project\logs
+  project_root: D:\Uni\SEM 7\Edge\project
+  provenance_file: D:\Uni\SEM 7\Edge\project\references\provenance.yaml
+  runs_dir: D:\Uni\SEM 7\Edge\project\runs
+pipeline:
+  admission_retry_s: 0.01
+  admission_timeout_s: 15.0
+  mode: concurrent
+  model_adapter: cnn
+  partition: validation
+  record_batch_size: 32
+preprocessing:
+  artifact: D:\Uni\SEM 7\Edge\project\artifacts\data\preprocessing_v1_c3436bda1c7877ab.json
+  channels: NRD
+  crop_size: 30
+  horizontal_flip: true
+  normalization: train_standardize
+  profile: nrd_center_crop
+  selected_channels:
+  - new
+  - reference
+  - difference
+  vertical_flip: true
+profiling:
+  batch_sizes:
+  - 1
+  - 2
+  - 4
+  - 8
+  cpu_threads: 1
+  overhead_candidates: 100
+  repeats: 300
+  rounds: 2
+  stability_ratio: 2.0
+  warmup: 50
+queue:
+  capacity: 8
+  controlled_loss_experiment: false
+  overflow: block
+scheduler:
+  constraints:
+    contention_ratio: 2.0
+    cooldown_s: 1.0
+    cpu_high: 90.0
+    cpu_low: 50.0
+    gpu_high: 90.0
+    gpu_low: 50.0
+    hysteresis_s: 0.5
+    latency_slo_ms: null
+    max_gpu_age_s: 2.5
+    max_snapshot_age_s: 0.5
+    max_total_active: 8
+    memory_margin_bytes: 268435456
+    min_latency_samples: 5
+    per_tier_caps:
+      large: 8
+      medium: 8
+      tiny: 8
+    preserve_escalation_target: true
+    queue_high: 6
+    queue_low: 1
+    queue_wait_slo_ms: 20.0
+    target_survival_recall: 0.95
+  contention_profile: D:\Uni\SEM 7\Edge\project\artifacts\runtime\module09_v2\contention.json
+  contention_sha256: dfa48161c0f618b477d30ba8648392b17d3bef051871709059425c4b8c30612d
+  device: cpu
+  hardware_id: 63998d2133ba053a
+  profiles: D:\Uni\SEM 7\Edge\project\artifacts\profiles\20260925T073859_3c77b7896ab5\model_profiles.json
+  profiles_sha256: 1f4ec864fe80da168ec9c400b3cc146eb15e46decc3cf9635c3a0ca4b21b16b8
+split:
+  manifest: D:\Uni\SEM 7\Edge\project\artifacts\data\split_seed20260924_v1.csv
+  seed: 20260924
+  stratified: true
+  test_fraction: 0.3
+  train_fraction: 0.5
+  validation_fraction: 0.2
+threshold:
+  artifact: D:\Uni\SEM 7\Edge\project\artifacts\triage\module10_v2\settings\proposed_all_dynamic\recall_constrained\threshold.json
+  artifact_sha256: a45cbaf0bba9ff8645ea699226a90b6b9132e2cd41b17776c538d78567926321
+  fit_partition: validation
+  policy: per_tier
+tier_selection:
+  fixed_tier: tiny
+  policy: resource_queue_aware
+training:
+  batch_size: 64
+  cpu_threads: 1
+  debug_overfit: false
+  deterministic: true
+  device: cpu
+  epochs: 30
+  learning_rate: 0.001
+  optimizer: adamw
+  patience: 8
+  precision: fp32
+  seed: 20260924
+  selection_metric: average_precision
+  weight_decay: 0.0001
+uncertainty:
+  artifact: null
+  artifact_sha256: null
+  passes: 10
+  policy: none
+  seed: null
+workload:
+  arrival_process: periodic
+  arrival_rate_per_s: 10.0
+  count: 643
+  high_rate: 500.0
+  low_rate: 5.0
+  moderate_rate: 50.0
+  network_available: null
+  network_bandwidth_bytes_per_s: null
+  network_latency_ms: null
+  profile: backlog
+  seed: 20260924
+  trace: D:\Uni\SEM 7\Edge\project\artifacts\triage\module10_v2\validation_trace.json

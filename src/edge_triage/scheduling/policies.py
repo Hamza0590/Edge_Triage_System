@@ -167,8 +167,9 @@ class AuditedAdmission:
 class ResourceQueueAwareTierPolicy:
     """Select only feasible tiers; cheap under pressure; upgrade after stable headroom."""
 
-    def __init__(self, context: PolicyContext) -> None:
+    def __init__(self, context: PolicyContext, *, queue_aware: bool = True) -> None:
         self.context = context
+        self.queue_aware = queue_aware
         self.lock = threading.RLock()
         self.last: ModelTier | None = None
         self.low_since: int | None = None
@@ -184,6 +185,8 @@ class ResourceQueueAwareTierPolicy:
     def select(self, candidate: Candidate, resources: ResourceSnapshot) -> SchedulingDecision:
         started = time.perf_counter_ns()
         ctx, c = self.context, self.context.constraints
+        if not self.queue_aware:
+            resources = resources.model_copy(update={"queue_length": 0, "oldest_wait_ms": 0.0})
         with self.lock:
             now = ctx.clock()
             data, before = ctx.inputs(resources, now), self.state()

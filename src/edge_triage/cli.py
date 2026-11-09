@@ -53,11 +53,65 @@ def main(argv: list[str] | None = None) -> int:
         "evaluate", help="Module 05 validation calibration and profiling"
     )
     evaluate.add_argument("--config", required=True)
+    experiment = subcommands.add_parser("experiment", help="Frozen validation experiment harness")
+    experiment_actions = experiment.add_subparsers(dest="experiment_action", required=True)
+    for action in ("validate-matrix", "freeze", "run"):
+        experiment_actions.add_parser(action).add_argument("--config", required=True, type=Path)
+    experiment_actions.add_parser("summarize").add_argument("--runs", required=True, type=Path)
+    experiment_actions.add_parser("plot").add_argument("--summary", required=True, type=Path)
+    triage = subcommands.add_parser("triage", help="Validation-only fate collection and fitting")
+    triage_actions = triage.add_subparsers(dest="triage_action", required=True)
+    for action in ("collect", "fit", "replay"):
+        command = triage_actions.add_parser(action)
+        command.add_argument("--config", required=True)
+        command.add_argument("--output", required=True, type=Path)
+        if action == "fit":
+            command.add_argument("--collection", required=True, type=Path)
+            command.add_argument("--protocol", required=True, type=Path)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
+        if args.command == "experiment":
+            from edge_triage.experiments.harness import (
+                freeze_matrix,
+                plot_summary,
+                run_matrix,
+                summarize_study,
+            )
+            from edge_triage.experiments.matrix import load_matrix, validate_matrix
+
+            if args.experiment_action == "validate-matrix":
+                result = validate_matrix(load_matrix(args.config))
+                sys.stdout.write(json.dumps(result["counts"], indent=2) + "\n")
+            elif args.experiment_action == "freeze":
+                matrix, _ = freeze_matrix(args.config)
+                sys.stdout.write(str(matrix.output_dir / "matrix.resolved.json") + "\n")
+            elif args.experiment_action == "run":
+                result_path = run_matrix(args.config)
+                sys.stdout.write(str(result_path) + "\n")
+                if any(
+                    r["status"] == "failed" for r in json.loads(result_path.read_bytes())["subruns"]
+                ):
+                    return 1
+            elif args.experiment_action == "summarize":
+                sys.stdout.write(str(summarize_study(args.runs)) + "\n")
+            else:
+                sys.stdout.write(str(plot_summary(args.summary)) + "\n")
+            return 0
         config = load_config(args.config)
-        if args.command == "evaluate":
+        if args.command == "triage":
+            from edge_triage.triage.workflow import collect, fit_collection, replay
+
+            if args.triage_action == "collect":
+                result_path = collect(config, args.output)
+            elif args.triage_action == "fit":
+                result_path = fit_collection(
+                    args.collection, config, args.output, json.loads(args.protocol.read_bytes())
+                )
+            else:
+                result_path = replay(config, args.output)
+            sys.stdout.write(str(result_path) + "\n")
+        elif args.command == "evaluate":
             from edge_triage.calibration.workflow import run_module05
 
             sys.stdout.write(str(run_module05(config)) + "\n")

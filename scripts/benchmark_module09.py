@@ -40,6 +40,9 @@ def inspect_run(directory, trace):
     by_id = {r["candidate_id"]: r for r in rows}
     assert set(by_id) == {r.candidate_id for r in trace} and len(rows) == len(trace)
     summary = json.loads((directory / "metrics/concurrent_summary.json").read_bytes())
+    assert summary["availability"]["active_jobs_total"] == 0
+    assert summary["executor"]["peak_active"] <= summary["executor"]["capacity"]
+    assert all(summary["queue"][key] == 0 for key in ("rejected", "dropped", "cancelled"))
     events = []
     finals = {}
     for line in (directory / "events.jsonl").read_text().splitlines():
@@ -66,6 +69,8 @@ def inspect_run(directory, trace):
             )
         assert abs(sum(e["inference_ms"] for e in executions) - row["inference_ms"]) < 1e-6
         assert abs(sum(e["uq_ms"] for e in executions) - row["uq_ms"]) < 1e-6
+        assert abs(sum(e["admission_ms"] for e in executions) - row["admission_ms"]) < 1e-6
+        assert abs(sum(e["executor_ms"] for e in executions) - row["executor_ms"]) < 1e-6
     elapsed = (max(r["final_ns"] for r in rows) - min(r["arrival_ns"] for r in rows)) / 1e9
     result = {
         "run": str(directory),
@@ -129,6 +134,16 @@ def main():
     }
     trace = load_trace(traces["backlog"], hash_file(config.split.manifest))
     if args.stage == "pipeline":
+        # Refuse to mix runtime versions when resuming an interrupted matrix.
+        write_immutable(
+            out / "measurement_source.json",
+            canonical(
+                {
+                    str(p.relative_to(ROOT)): hash_file(p)
+                    for p in sorted((ROOT / "src").rglob("*.py"))
+                }
+            ),
+        )
         write_immutable(out / "preflight.json", canonical(verify()))
         write_immutable(out / "objective.json", objective_path.read_bytes())
         torch.set_num_threads(1)
@@ -145,6 +160,9 @@ def main():
                     path = out / f"pipeline_{key}_{level}.json"
                     if path.exists():
                         saved = json.loads(path.read_bytes())
+                        unsafe = (
+                            unsafe or saved["skipped"] or any(r["failed"] for r in saved["rounds"])
+                        )
                         if level == 1:
                             reference = {
                                 r["candidate_id"]: r
@@ -291,6 +309,8 @@ def main():
         for key in sorted({r["portfolio"] for r in results}):
             group = [r for r in results if r["portfolio"] == key]
             baseline = next(r for r in group if r["level"] == 1)["rounds"]
+            assert len(baseline) == objective["rounds"]
+            assert all(r["failed"] == 0 for r in baseline)
             choices = []
             for row in group:
                 comparisons = []
@@ -338,7 +358,16 @@ def main():
             "files": {
                 p.name: hash_file(p)
                 for p in sorted(out.glob("*.json"))
-                if p.name not in ("benchmark.json", "contention.json")
+                if p.name.startswith(("pipeline_", "component_", "arrivals_"))
+                or p.name
+                in {
+                    "preflight.json",
+                    "objective.json",
+                    "measurement_source.json",
+                    "session_protocol.json",
+                    "fixed_verification.json",
+                    "components_verification.json",
+                }
             },
         }
         write_immutable(out / "benchmark.json", canonical(benchmark))

@@ -12,3 +12,13 @@ runs/
 logs/
 MeerLICHT_images.npy
 MeerLICHT_labels.csv
+.history/
+pytest-cache-files-*/
+papers/*.pdf
+
+# AI-assistant working files (local only, not published)
+CLAUDE.md
+.claude/
+docs/state/
+docs/worklog/
+specs/

@@ -4,7 +4,7 @@ Resource- and contention-aware astronomical Real/Bogus triage. The research
 contribution is integration and equal-recall evaluation of established methods.
 Modules01-08 supply infrastructure, frozen data/models, calibration/profiling,
 monitoring, adaptive sequential scheduling and evaluated uncertainty ablations.
-Module09 concurrent execution is in progress.
+Modules09–10 complete concurrent execution and validated recall-constrained data fate.
 
 ## Setup (PowerShell)
 
@@ -75,7 +75,7 @@ Packaging follows [PyPA guidance](https://packaging.python.org/en/latest/guides/
 Frozen models and validation follow [Pydantic documentation](https://docs.pydantic.dev/latest/concepts/models/).
 
 The persistent implementation status and exact next action live in
-[PROJECT_CONTEXT.md](Edge_Astronomical_Triage_Prompts/PROJECT_CONTEXT.md).
+[docs/state/](docs/state/current-state.md) (Codex-era record archived in [specs/history](specs/history/PROJECT_CONTEXT_codex.md)).
 
 Module 05 provides validation-only calibration and CPU/CUDA model profiling:
 see [methodology and usage](docs/evaluation.md) and [verified results](docs/module05_results.md).
@@ -84,6 +84,21 @@ Module08 adds selective MC dropout and bounded sequential cascades. Gate C fails
 the declared validation objective, so the proposed default keeps UQ/escalation
 disabled. See [implementation, evidence and commands](docs/uncertainty.md).
 
-Module09 now has an asynchronous executor foundation and shared-model state/RNG
-coordination. Streaming/CLI integration and performance gates remain pending:
-see [implementation checkpoint and remaining work](docs/concurrency.md).
+Module09 provides interchangeable sequential, fixed and dynamic streaming execution,
+shared-model state/RNG coordination, measured contention caps and a microbatch baseline.
+See [runtime usage](docs/concurrency.md) and [measurements and Gate D](docs/module09_results.md).
+
+Module10 adds conservative fate policies, logical byte accounting and immutable
+validation-fitted thresholds. All36 frozen runtime replays meet the target; the
+proposed policy retains95.14% of Real candidates with54.12% logical byte reduction.
+Final regression:378 tests. These are conditional validation results; no held-out
+evaluation or compression codec was run. See [usage](docs/triage.md),
+[verified results](docs/module10_results.md), and the
+[proposed configuration](configs/experiments/module10_proposed_v2.yaml).
+
+Module 11 is complete: one harness runs all seven portfolios and three execution modes as a
+curated 39-case pipeline + 21-case component matrix, fitted on validation only and evaluated once on
+the 966 held-out rows (120/120 subruns, independently verified and sealed). Every configuration keeps
+survival recall >= 0.95 on held-out data; adaptive selection, dynamic concurrency, contention-aware
+admission and UQ escalation give no full-cost benefit on this desktop (negative results, reported as such).
+See [results](docs/module11_results.md), [hypotheses](docs/hypotheses.md) and [usage](docs/experiments.md).

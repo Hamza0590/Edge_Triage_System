@@ -1,0 +1,186 @@
+scheduler:
+  contention_profile: D:\Uni\SEM 7\Edge\project\artifacts\runtime\module09_v2\contention.json
+  contention_sha256: dfa48161c0f618b477d30ba8648392b17d3bef051871709059425c4b8c30612d
+  profiles: D:\Uni\SEM 7\Edge\project\artifacts\profiles\20260925T073859_3c77b7896ab5\model_profiles.json
+  profiles_sha256: 1f4ec864fe80da168ec9c400b3cc146eb15e46decc3cf9635c3a0ca4b21b16b8
+  hardware_id: 63998d2133ba053a
+  device: cpu
+  constraints:
+    target_survival_recall: 0.95
+    latency_slo_ms: null
+    queue_wait_slo_ms: 20.0
+    memory_margin_bytes: 268435456
+    cpu_low: 50.0
+    cpu_high: 90.0
+    gpu_low: 50.0
+    gpu_high: 90.0
+    queue_low: 1
+    queue_high: 6
+    per_tier_caps:
+      tiny: 8
+      medium: 8
+      large: 8
+    max_total_active: 8
+    contention_ratio: 2.0
+    min_latency_samples: 5
+    hysteresis_s: 0.5
+    cooldown_s: 1.0
+    max_snapshot_age_s: 0.5
+    max_gpu_age_s: 2.5
+    preserve_escalation_target: true
+queue:
+  capacity: 8
+  overflow: block
+  controlled_loss_experiment: false
+evaluation:
+  partition: validation
+  bootstrap_repeats: 1000
+  temperature_min: 0.01
+  temperature_max: 100.0
+  gate_cost_ratio: 1.25
+  gate_ap_improvement: 0.0005
+profiling:
+  batch_sizes:
+  - 1
+  - 2
+  - 4
+  - 8
+  warmup: 50
+  repeats: 300
+  rounds: 2
+  cpu_threads: 1
+  overhead_candidates: 100
+  stability_ratio: 2.0
+pipeline:
+  mode: concurrent
+  model_adapter: cnn
+  partition: validation
+  admission_retry_s: 0.01
+  admission_timeout_s: 15.0
+  record_batch_size: 32
+loader:
+  batch_size: 64
+  workers: 0
+  pin_memory: false
+  prefetch_factor: 2
+  include_original_bytes: true
+paths:
+  project_root: D:\Uni\SEM 7\Edge\project
+  runs_dir: D:\Uni\SEM 7\Edge\project\runs
+  artifacts_dir: D:\Uni\SEM 7\Edge\project\artifacts
+  logs_dir: D:\Uni\SEM 7\Edge\project\logs
+  provenance_file: D:\Uni\SEM 7\Edge\project\references\provenance.yaml
+dataset:
+  channel_order:
+  - new
+  - reference
+  - difference
+  images: D:\Uni\SEM 7\Edge\project\MeerLICHT_images.npy
+  labels: D:\Uni\SEM 7\Edge\project\MeerLICHT_labels.csv
+  images_md5: bbf55c1cecbdea127497d6cd346e3455
+  labels_md5: cacf76a6aadd97ed18ab24b58e121bc2
+split:
+  train_fraction: 0.5
+  validation_fraction: 0.2
+  test_fraction: 0.3
+  seed: 20260924
+  stratified: true
+  manifest: D:\Uni\SEM 7\Edge\project\artifacts\data\split_seed20260924_v1.csv
+preprocessing:
+  profile: nrd_center_crop
+  crop_size: 30
+  channels: NRD
+  normalization: train_standardize
+  horizontal_flip: true
+  vertical_flip: true
+  selected_channels:
+  - new
+  - reference
+  - difference
+  artifact: D:\Uni\SEM 7\Edge\project\artifacts\data\preprocessing_v1_c3436bda1c7877ab.json
+models:
+  tier_portfolio:
+  - tiny
+  - medium
+  - large
+  checkpoint_index: D:\Uni\SEM 7\Edge\project\artifacts\models\family_20260924T204507_5a8771c620a0.json
+training:
+  seed: 20260924
+  epochs: 30
+  batch_size: 64
+  learning_rate: 0.001
+  device: cpu
+  optimizer: adamw
+  weight_decay: 0.0001
+  patience: 8
+  selection_metric: average_precision
+  precision: fp32
+  deterministic: true
+  cpu_threads: 1
+  debug_overfit: false
+calibration:
+  method: temperature_scaling
+  fit_partition: validation
+  seed: 20260924
+  bins: 15
+  artifact_index: D:\Uni\SEM 7\Edge\project\artifacts\calibration\20260925T073859_3c77b7896ab5\index.json
+  probability_mode: recommended
+monitor:
+  enabled: true
+  interval_s: 0.1
+  history_limit: 256
+  estimator_window_s: 2.0
+  estimator_max_samples: 10000
+  gpu_refresh_s: 2.0
+  overhead_warning_fraction: 0.1
+tier_selection:
+  policy: resource_queue_aware
+  fixed_tier: tiny
+admission:
+  policy: memory_contention_aware
+  execution_mode: dynamic_concurrency
+  fixed_concurrency: 4
+  max_concurrency: 8
+uncertainty:
+  policy: none
+  passes: 10
+  seed: null
+  artifact: null
+  artifact_sha256: null
+escalation:
+  policy: none
+  max_escalations: 2
+threshold:
+  policy: common
+  artifact: null
+  fit_partition: validation
+fate:
+  policy: classification_only
+  target_survival_recall: 0.95
+  compression: logical_bytes
+workload:
+  trace: D:\Uni\SEM 7\Edge\project\artifacts\traces\burst_periodic_3a5af13ae9c87b09.json
+  arrival_rate_per_s: 10.0
+  seed: 20260924
+  count: 100
+  profile: burst
+  arrival_process: periodic
+  low_rate: 5.0
+  moderate_rate: 50.0
+  high_rate: 500.0
+  network_available: null
+  network_bandwidth_bytes_per_s: null
+  network_latency_ms: null
+experiment:
+  name: module09_proposed_v2
+  purpose: NON_SCIENTIFIC_SMOKE_TEST
+  seed: 20260924
+  provenance_ids:
+  - engineering-foundation
+  - adaptive-model-selection
+  - posthoc-pipeline
+  - convergo
+  - peak-memory-scheduling
+  - mc-dropout
+  - temperature-scaling
+  - human-label-free-uq

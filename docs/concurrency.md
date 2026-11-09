@@ -1,19 +1,33 @@
-# Module09 implementation checkpoint: executor foundation
+# Module09 concurrent inference runtime
 
-Module09 is **IN_PROGRESS**. The asynchronous job backends and shared-model
-coordination exist and have targeted tests. The streaming pipeline and CLI still
-use the inherited sequential executor. No concurrency performance, safe hardware
-cap, contention knee, micro-batching comparison or Gate D result is claimed yet.
-The proposed default remains the frozen `module08_proposed_v1.yaml` configuration:
-no UQ and no escalation. No frozen configuration or artifact has been overwritten.
+The common streaming pipeline supports sequential, fixed and dynamic concurrency
+through configuration. One event loop owns candidate states, escalation, final
+events and Parquet writes; bounded thread workers execute one tier prediction and
+its optional UQ. No UQ and no escalation remain the proposed defaults from Gate C.
+Performance evidence and the Gate D decision are in [Module09 results](module09_results.md).
+
+## Run and configure
+
+```powershell
+python -m edge_triage pipeline concurrent --config configs/experiments/module09_proposed_v2.yaml
+```
+
+Use `pipeline.mode: concurrent` and change `admission.execution_mode` to
+`sequential`, `fixed_concurrency` or `dynamic_concurrency`. Fixed mode uses
+`admission.fixed_concurrency`; dynamic mode uses `max_concurrency` bounded by
+the measured `scheduler.contention_profile`. The proposed configuration pins its
+SHA-256. Hardware/device, model family, profile bundle, shape and CPU thread count
+must match the artifact; unknown portfolios conservatively use one worker.
+Resource watermarks can lower dynamic admission further. Legacy smoke and
+adaptive-sequential modes remain available to reproduce earlier workflows.
 
 ## Job lifecycle
 
 `runtime/executors.py` supplies asynchronous `SequentialExecutor`,
 `FixedConcurrencyExecutor` and `DynamicConcurrencyExecutor`. They implement the
-new `AsyncInferenceExecutor` protocol; the existing blocking `InferenceExecutor`
-protocol remains unchanged until pipeline integration. The legacy
-`runtime.components.SequentialExecutor` is still the pipeline backend.
+`AsyncInferenceExecutor` protocol. `Pipeline.process_async` submits these jobs;
+the inherited blocking `InferenceExecutor` protocol supports legacy modes.
+`runtime/concurrent.py` constructs the selected backend with shared memory guards.
 
 Each `InferenceJob` contains one candidate/tier/model attempt and optional UQ.
 Models must already be loaded, and the caller must not mutate their tensors or
@@ -33,8 +47,8 @@ finally:
 Submission blocks asynchronously when the pending queue is full. A single event
 loop owns dispatch and lifecycle state; a bounded thread pool runs native model
 work. No model loading, process spawning, tensor serialization or CUDA streams
-occur in the candidate path. Threads are the initial correctness implementation,
-not a measured choice over CPU processes. Job IDs are retained for the executor's
+occur in the candidate path. The CPU process comparison measures separate warmed
+workers receiving integer offsets into read-only input mmap files. Job IDs are retained for the executor's
 lifetime to reject duplicate submissions; tensors and completed results are not
 retained internally after completion. Create one executor per finite run.
 
@@ -68,12 +82,12 @@ timeout. A monitor thread may call `notify_resources()` safely. A resource updat
 must be published before notification. Module07's existing memory, per-tier,
 hysteresis and pressure rules remain responsible for admission decisions.
 
-The snapshot supplied to a lease policy must count only jobs external to its
-ledger: Module07 adds its own reservations when enforcing caps. The existing
-`ObservedAdmission` wrapper currently supplies all live counters, so it must be
-adapted explicitly during streaming integration. Passing it unchanged would
-conservatively double-count owned jobs. Physical memory observations still count
-all allocations; the inherited whole-process RSS profile reservations remain
+The snapshot supplied to a lease policy counts only jobs external to its ledger:
+Module07 adds its own reservations when enforcing caps. Concurrent streaming
+supplies zero external jobs because its executor owns all runtime leases. Tier
+selection also leaves busy-tier waiting to admission. Live counters still record
+launched work through UQ; the final summary reads those counters after draining.
+Physical memory observations count all allocations; the inherited whole-process RSS profile reservations remain
 conservative estimates, not a physical no-OOM guarantee.
 
 ## Shared-model and RNG coordination
@@ -104,15 +118,34 @@ covered by tests in Edge_Project, and no dependency migration was performed.
 
 | Source | Current use and adoption | Deviations / excluded features | Evidence and code status |
 |---|---|---|---|
-| Quilt, DOI 10.1016/j.sysarc.2026.103696 | Inspired: inherited measured-memory admission before whole-model jobs | No compiler, partitioning, shared tensor pool or source scheduler | Module05/07 verified abstract/institution record; publisher reopen returned 403 in this session. No copied code; upstream license unverified |
-| PRAS, DOI 10.1016/j.sysarc.2025.103597 | Inspired: decisions on pending post-arrival requests | No augmented graph or MAB optimizer | Module06/07 verified publisher abstract; publisher reopen returned 403. No copied code; upstream license unverified |
-| [OCTOPINF](https://arxiv.org/abs/2502.01277) | Inspired: resource-change notification and workload-aware serving boundary | No video pipeline, edge/server placement or adaptive batching implemented in this checkpoint | ArXiv abstract rechecked 2026-09-26; no copied code; upstream code/license unverified |
-| Project integration | Async lifecycle, failure isolation, lease ownership and state/RNG guard | Whole-tier thread jobs; no speedup claim | Independently implemented and tested here |
+| Quilt, DOI 10.1016/j.sysarc.2026.103696 | Inspired: inherited measured-memory admission before whole-model jobs | No compiler, partitioning, shared tensor pool or source scheduler | Module05/07 verified abstract/institution record; September Module09 publisher reopen returned 403. Prior evidence retained. No copied code; upstream license unverified |
+| PRAS, DOI 10.1016/j.sysarc.2025.103597 | Inspired: decisions on pending post-arrival requests | No augmented graph or MAB optimizer | Module06/07 verified publisher abstract; September Module09 publisher reopen returned 403. Prior evidence retained. No copied code; upstream license unverified |
+| [OCTOPINF](https://arxiv.org/abs/2502.01277) | Inspired: resource-change notification and workload-aware serving boundary | No video pipeline, edge/server placement or source adaptive batching; our baseline uses fixed batches and a fixed waiting deadline | ArXiv abstract evidence from 2026-09-26 retained; no copied code; upstream code/license unverified |
+| Project integration | Async lifecycle, failure isolation, lease ownership, state/RNG guard and measured contention caps | Whole-tier thread jobs; measured scope in the results report | Independently implemented and tested here |
 
 Ordinary Python threads do not reproduce these systems. No new adoption level
-above `inspired` is justified by this implementation checkpoint.
+above `inspired` is claimed for these scheduling sources.
 
-## Validation and remaining acceptance work
+## Cost accounting and validation
+
+Candidate records retain complete prediction, UQ, escalation and execution chains.
+`admission_ms` includes snapshot acquisition, all admission attempts and their
+durable decision logging. `executor_ms` measures worker completion to result
+dispatch/release; it is not total orchestration CPU time. `queue_ms` runs from
+queue entry to first worker start and overlaps selection/admission. Inference and
+UQ include lock waiting. E2E covers realized arrival to candidate finalization,
+including all preceding instrumentation; final record/event persistence follows
+that timestamp. These overlapping costs must not be added or subtracted as a
+disjoint decomposition. Source backpressure and intended-arrival lateness are
+reported separately. Console rendering is excluded during benchmarks; durable
+logging remains enabled.
+
+Microbatch replay accepts preprocessed validation arrays and ordered relative
+arrivals, with sizes 1/2/4/8 and a 2 ms oldest-arrival formation deadline. It records
+position IDs, batch sizes, forward time, wait and E2E latency. The deadline bounds
+formation waiting, not queue delay under backlog or OS scheduling delay. Component
+timing excludes preprocessing and pipeline logging and cannot establish superiority
+over the fully instrumented pipeline by direct throughput comparison.
 
 `scripts/preflight_module09.py` checks frozen family/checkpoint files, calibration,
 24 model profiles, 12 traces, prior monitor evidence, Module08 final-validation
@@ -130,12 +163,11 @@ candidate/tier predictions per backend using six validation rows, joining by
 candidate/trace/tier and checking logits/probabilities with explicit tolerances.
 These are correctness tests, not performance measurements or scientific metrics.
 
-Next, integrate async tier attempts into the common pipeline, preserving its
-state-machine/events and a single Parquet owner. Add configuration-only switching,
-resource notifications, live counters without duplicate lease accounting,
-cascade resubmission and complete executor overhead accounting. Verify all seven
-portfolios with isolated UQ ablation fixtures and frozen trace replays. Then
-predeclare performance/Gate D criteria and measure CPU threads versus processes,
-fixed concurrency curves, micro-batch formation delay and throughput, resource
-peaks and failures. Produce a versioned contention profile, consume it in the
-dynamic policy, and report Gate D honestly before marking Module09 complete.
+Streaming integration tests exercise all three modes and forced real MC cascades
+for all seven portfolios with isolated routing fixtures. Microbatch tests cover
+identity, partial batches, formation deadlines and invalid arrivals. Contention
+tests reject incompatible or modified artifacts and verify conservative fallback.
+`scripts/benchmark_module09.py` produces immutable fixed and component measurements;
+`scripts/verify_module09.py` checks component predictions, runs measured-cap dynamic
+replays and plots saved curves. Source hashes prevent mixing runtime versions on
+resume. The results report records the completed checks and platform limits.

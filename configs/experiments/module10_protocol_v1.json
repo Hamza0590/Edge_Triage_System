@@ -1,0 +1,30 @@
+{
+  "version": "module10_study_v1",
+  "partition": "validation",
+  "validation_candidates": 643,
+  "target_survival_recall": 0.95,
+  "input_family": "artifacts/models/family_20260924T204507_5a8771c620a0.json",
+  "input_configuration": "configs/experiments/module09_proposed_v2.yaml",
+  "matrix": {
+    "core": "all seven portfolios x sequential/fixed_concurrency/dynamic_concurrency; diagnostic round_robin initial tier; recommended probability modes; noUQ/no escalation",
+    "proposed": "all-three portfolio, dynamic_concurrency, resource_queue_aware, recommended probability modes, noUQ/no escalation",
+    "uq_pairs": "all seven portfolios x fixed-first sequential x calibrated noUQ or calibrated five-pass selective MC/cascade; diagnostic UQ seed20260924; negative Gate C preserved",
+    "fates": ["transmit_all", "binary", "common_three_way", "recall_constrained"],
+    "runtime_replay": "full643 validation rows per upstream configuration with frozen per-tier fate; other fate ablations replay exact attested final evidence; no stochastic rerouting during offline fate comparison"
+  },
+  "trace": "each validation row exactly once, canonical candidate-ID order, backlog arrival time0, source-ID join; no repeated classification observations",
+  "search": {
+    "discard": "all observed compatible final p_real below0.5 plus disabled; inclusive boundary",
+    "min_p_real_for_transmit": [0.5, 0.75, 0.9],
+    "max_uncertainty_for_discard": [0.0, 0.1, 0.25, 0.5],
+    "monotonic_discard": true,
+    "objective": "minimize logical bytes subject to global survival recall>=0.95; ties fewer real discards then lower uncertainty then compute (invariant for fixed final evidence) then deterministic bounds"
+  },
+  "accounting": {"version": "logical_raw_tensor_v1", "raw_bytes": 120000, "compression_fraction": 0.25, "metadata_bytes": 0, "protocol_bytes": 0, "codec_cpu_ms": 0, "network_executed": false},
+  "bootstrap": {"repeats": 1000, "seed": 20260924, "method": "IID percentile95, fixed fitted thresholds, conditional validation diagnostics"},
+  "seed_stability": {"training_seeds": [20260924, 20260925, 20260926], "scope": "three singleton tiers; same frozen split/preprocessing and family architecture/training protocol; new seeds stored separately; calibrated validation-only sequential outputs; fixed0.5 transmit and noUQ to isolate seed thresholds; no model selection using this study"},
+  "recall_curve_targets": [0.9, 0.95, 0.98, 1.0],
+  "replay_failure_rule": "do not refit after runtime replay; retain failed results, mark unsupported/infeasible primary artifact if replay misses target; conservative transmit-all artifact remains feasible; disclose routing/numerical changes",
+  "cost": "instrumented end-to-end latency plus named component and monitor/scheduler costs; E2E includes queue/admission waits, not CPU attribution; no additive double counting; seed training cost separate",
+  "limitations": ["validation reused for model selection/calibration/thresholds", "model seed sample size3", "monotonic cutoffs only constrain score space", "logical compression fidelity unmeasured", "dynamic cap1 admission slowdown preserved", "PC CPU serving, no Jetson claim"]
+}

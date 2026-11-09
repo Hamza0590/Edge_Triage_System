@@ -28,7 +28,8 @@ def test_real_concurrent_trace_modes(tmp_path, mode):
     assert all(r["status"] == "completed" and r["additional_forward_passes"] == 0 for r in rows)
     assert all(len(json.loads(r["execution_chain_json"])) == 1 for r in rows)
     summary = json.loads((directory / "metrics/concurrent_summary.json").read_bytes())
-    assert summary["executor"]["peak_active"] <= (1 if mode == "sequential" else 8)
+    limit = {"sequential": 1, "fixed_concurrency": 4, "dynamic_concurrency": 8}[mode]
+    assert summary["executor"]["peak_active"] <= limit
     assert summary["completed"] == 120 and summary["failed"] == 0
     assert summary["availability"]["active_jobs_total"] == 0
 
@@ -87,3 +88,65 @@ def test_async_common_pipeline_forced_cascades(uq_config):  # noqa: F811
 
 
 from tests.integration.test_uncertainty_cascade import uq_config  # noqa: E402,F401
+
+
+def test_async_failed_uq_preserves_prediction_costs_and_releases_counters(
+    smoke_config,  # noqa: F811
+    tmp_path,
+):
+    import asyncio
+    import time
+
+    from edge_triage.contracts import utc_now
+    from edge_triage.event_logging import EventLogger
+    from edge_triage.monitoring.estimators import RuntimeCounters
+    from edge_triage.runtime.components import LoggerEventSink
+    from edge_triage.runtime.executors import FixedConcurrencyExecutor
+    from edge_triage.runtime.factory import assemble
+    from edge_triage.runtime.pipeline import Pipeline, QueueEntry
+    from edge_triage.runtime.records import ParquetRecordWriter
+    from edge_triage.runtime.reference import NoUncertaintyPolicy
+    from edge_triage.runtime.state import PipelineState, StateMachine
+    from edge_triage.uncertainty.sampling import SamplingError
+    from tests.integration.test_pipeline import source
+
+    class FailOne(NoUncertaintyPolicy):
+        def evaluate(self, prediction):
+            if prediction.candidate_id == "c1":
+                raise SamplingError(3, 2, 0.1)
+            return super().evaluate(prediction)
+
+    async def run():
+        parts = assemble(smoke_config)
+        parts.uncertainty = FailOne()
+        logger = EventLogger(tmp_path / "async_events.jsonl", "test-run", smoke_config.config_hash)
+        writer = ParquetRecordWriter(tmp_path / "async.parquet")
+        pipeline = Pipeline(smoke_config, parts, logger, writer)
+        counters = RuntimeCounters(2, 100)
+        engine = FixedConcurrencyExecutor(2)
+        try:
+            tasks = []
+            for item in source():
+                machine = StateMachine(item.candidate, logger.config_hash, LoggerEventSink(logger))
+                machine.transition(PipelineState.QUEUED)
+                entry = QueueEntry(machine, utc_now().isoformat(), time.monotonic_ns())
+                tasks.append(pipeline.process_async(item, entry, engine, counters))
+            rows = {r.candidate_id: r for r in await asyncio.gather(*tasks)}
+            assert rows["c0"].status == rows["c2"].status == "completed"
+            failed = rows["c1"]
+            assert failed.status == "failed" and failed.final_logit is not None
+            assert failed.uq_ms > 0 and failed.additional_forward_passes == 3
+            execution = json.loads(failed.execution_chain_json)[0]
+            assert execution["error_type"] == "SamplingError"
+            assert execution["failed_uq_completed"] == 2
+            assert counters.snapshot()["active_jobs_total"] == 0
+            assert engine.failed == 1 and engine.completed == 2
+        finally:
+            await engine.shutdown()
+            writer.close()
+            logger.close()
+
+    asyncio.run(run())
+
+
+from tests.integration.test_pipeline import smoke_config  # noqa: E402,F401
